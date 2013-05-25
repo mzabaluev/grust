@@ -32,14 +32,16 @@ use grust::object;
 use grust::types::*;
 use grust::gstr;
 
+pub enum GFile { }
+
 pub mod raw {
     use grust::types::*;
     use grust::object::GType;
     use glib;
     use gobject;
+    use super::GFile;
 
     pub struct GAsyncResult;
-    pub struct GFile;
 
     pub struct GCancellable {
         parent_instance: gobject::raw::GObject,
@@ -57,7 +59,7 @@ pub mod raw {
     }
 
     #[link_name="gio-2.0"]
-    pub extern mod symbols {
+    pub extern {
         fn g_async_result_get_type() -> GType;
         fn g_file_get_type() -> GType;
         fn g_file_new_for_path(path: *gchar) -> *GFile;
@@ -86,9 +88,10 @@ pub mod classes {
 pub mod interfaces {
     use grust::object;
     use raw;
+    use super::GFile;
 
     pub type AsyncResult = object::Interface<raw::GAsyncResult>;
-    pub type File = object::Interface<raw::GFile>;
+    pub type File = object::Interface<GFile>;
 }
 
 pub type AsyncReadyCallback = ~fn(source_object : &gobject::classes::Object,
@@ -97,15 +100,15 @@ pub type AsyncReadyCallback = ~fn(source_object : &gobject::classes::Object,
 impl object::ObjectType for raw::GAsyncResult {
     fn get_type() -> object::GType {
         unsafe {
-            raw::symbols::g_async_result_get_type()
+            raw::g_async_result_get_type()
         }
     }
 }
 
-impl object::ObjectType for raw::GFile {
+impl object::ObjectType for GFile {
     fn get_type() -> object::GType {
         unsafe {
-            raw::symbols::g_file_get_type()
+            raw::g_file_get_type()
         }
     }
 }
@@ -144,17 +147,18 @@ pub trait File {
                   -> object::Reference<raw::GFileInputStream>;
 }
 
-impl File {
-    pub fn new_for_path(path: &str) -> object::Reference<raw::GFile> {
+impl GFile {
+    pub fn new_for_path(path: &str) -> object::Reference<GFile> {
         unsafe {
-            let mut out: (*plumbing::GMainContext, *raw::GFile)
-                         = (ptr::null(), ptr::null());
+            let mut out: (*plumbing::GMainContext, *GFile)
+                = (ptr::null(), ptr::null());
             plumbing::call(ptr::null(),
-                    |_ctx| unsafe {
-                        let ret = str::as_c_str(path,
-                                        raw::symbols::g_file_new_for_path);
-                        out = (_ctx, ret);
-                    });
+                           |_ctx| unsafe {
+                               let ret = do str::as_c_str(path) |c_str_path| {
+                                   raw::g_file_new_for_path(c_str_path)
+                               };
+                               out = (_ctx, ret);
+                           });
             match (out) {
                 (ctx, obj) => object::take_object(obj, ctx)
             }
@@ -168,7 +172,7 @@ impl File for interfaces::File {
             let mut out: *gchar = ptr::null();
             plumbing::call(self.context(),
                     |_ctx| unsafe {
-                        out = raw::symbols::g_file_get_path(self.raw());
+                        out = raw::g_file_get_path(self.raw());
                     });
             gstr::utf8::wrap(out)
         }
@@ -192,7 +196,7 @@ impl File for interfaces::File {
             plumbing::call(self.context(),
                     |_ctx| unsafe {
                         (*cb_data_raw).context = _ctx;
-                        raw::symbols::g_file_read_async(self.raw(),
+                        raw::g_file_read_async(self.raw(),
                                 io_priority as libc::c_int,
                                 raw_cancellable,
                                 callbacks::async_ready_callback,
@@ -211,7 +215,7 @@ impl File for interfaces::File {
             plumbing::call(self.context(),
                     |_ctx| unsafe {
                         let error: *glib::raw::GError = ptr::null();
-                        let ret = raw::symbols::g_file_read_finish(self.raw(),
+                        let ret = raw::g_file_read_finish(self.raw(),
                                 res.raw(), ptr::to_unsafe_ptr(&error));
                         out = (_ctx, ret, error);
                     });
@@ -219,7 +223,7 @@ impl File for interfaces::File {
                 (ctx, obj, error) => {
                     if ptr::is_not_null(error) {
                         let msg = str::raw::from_c_str((*error).message);
-                        glib::raw::symbols::g_error_free(error);
+                        glib::raw::g_error_free(error);
                         fail!(msg);
                     }
                     object::take_object(obj, ctx)
